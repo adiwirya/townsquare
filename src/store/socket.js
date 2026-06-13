@@ -99,6 +99,11 @@ class LiveSession {
       })
       .on("broadcast", { event: "gachaStart" }, () => {
         if (!this._isSpectator) return;
+        this._store.state.players.players.forEach(player => {
+          if (player.role && player.role.id) {
+            this._store.commit("players/update", { player, property: "role", value: {} });
+          }
+        });
         this._store.commit("session/setGachaMode", true);
       })
       .on("broadcast", { event: "gachaEnd" }, () => {
@@ -301,6 +306,7 @@ class LiveSession {
         isVoteInProgress: session.isVoteInProgress,
         markedPlayer: session.markedPlayer,
         fabled: fabled.map(f => (f.isCustom ? f : { id: f.id })),
+        isGachaMode: session.isGachaMode,
         ...(session.nomination ? { votes: session.votes } : {})
       });
     }
@@ -322,7 +328,8 @@ class LiveSession {
       lockedVote,
       isVoteInProgress,
       markedPlayer,
-      fabled
+      fabled,
+      isGachaMode
     } = data;
     const players = this._store.state.players.players;
     if (players.length < gamestate.length) {
@@ -376,6 +383,9 @@ class LiveSession {
       this._store.commit("players/setFabled", {
         fabled: fabled.map(f => this._store.state.fabled.get(f.id) || f)
       });
+      if (typeof isGachaMode !== "undefined") {
+        this._store.commit("session/setGachaMode", isGachaMode);
+      }
     }
   }
 

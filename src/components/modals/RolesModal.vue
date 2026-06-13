@@ -168,11 +168,9 @@ export default {
         .map(id => [Math.random(), id])
         .sort((a, b) => a[0] - b[0])
         .map(a => a[1]);
-      // Clear all existing roles
+      // Clear all roles (treat as new game)
       this.players.forEach(player => {
-        if (player.role && player.role.id) {
-          this.$store.commit("players/update", { player, property: "role", value: {} });
-        }
+        this.$store.commit("players/update", { player, property: "role", value: {} });
       });
       this.$store.commit("session/startGachaSession", pool);
       this.toggleModal("roles");

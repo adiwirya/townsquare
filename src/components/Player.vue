@@ -44,16 +44,13 @@
         @set-role="$emit('trigger', ['openRoleModal'])"
       />
 
-      <!-- Gacha draw button (spectator, my seat, no role yet) -->
+      <!-- Gacha mode indicator — opens modal -->
       <div
-        class="gacha-draw"
+        class="gacha-indicator"
         v-if="session.isGachaMode && player.id === session.playerId && !player.role.id"
-        @click.stop="drawGachaRole"
-        title="Draw your fate!"
-      >
-        <font-awesome-icon icon="dice" />
-        <span>Draw!</span>
-      </div>
+        @click.stop="$store.commit('session/setGachaDrawPlayerId', player.id)"
+        title="Reveal your fate!"
+      ></div>
 
       <!-- Overlay icons -->
       <div class="overlay">
@@ -266,9 +263,6 @@ export default {
     };
   },
   methods: {
-    drawGachaRole() {
-      this.$store.commit("session/drawGachaRole");
-    },
     changePronouns() {
       if (this.session.isSpectator && this.player.id !== this.session.playerId)
         return;
@@ -635,43 +629,44 @@ li.move:not(.from) .player .overlay svg.move {
   border-bottom: 2px solid rgba(255, 80, 80, 0.7);
 }
 
-/****** Gacha sealed role *****/
-.gacha-draw {
+/****** Gacha indicator *****/
+.gacha-indicator {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(circle, rgba(80, 0, 120, 0.92) 0%, rgba(20, 0, 40, 0.96) 100%);
   border-radius: 50%;
   cursor: pointer;
   z-index: 3;
-  gap: 4px;
-  animation: gacha-pulse 2s ease-in-out infinite;
+  background: radial-gradient(circle at 50% 50%, rgba(140, 0, 220, 0.55) 0%, rgba(20, 0, 60, 0.7) 100%);
+  animation: gacha-indicator-pulse 2s ease-in-out infinite;
 
-  svg {
-    font-size: 2em;
-    color: gold;
-    filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.8));
+  &::after {
+    content: "👝";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -52%);
+    font-size: 2.2em;
+    filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.9));
+    animation: gacha-bag-float 2s ease-in-out infinite;
+    line-height: 1;
   }
-  span {
-    font-size: 0.65em;
-    color: gold;
-    font-weight: bold;
-    text-shadow: 0 0 4px rgba(255, 215, 0, 0.9);
-  }
+
   &:hover {
-    background: radial-gradient(circle, rgba(120, 0, 180, 0.95) 0%, rgba(40, 0, 60, 0.98) 100%);
+    background: radial-gradient(circle at 50% 50%, rgba(180, 0, 255, 0.65) 0%, rgba(40, 0, 80, 0.8) 100%);
   }
 }
 
-@keyframes gacha-pulse {
-  0%, 100% { box-shadow: 0 0 8px 2px rgba(200, 100, 255, 0.4); }
-  50% { box-shadow: 0 0 18px 6px rgba(200, 100, 255, 0.8); }
+@keyframes gacha-indicator-pulse {
+  0%, 100% { box-shadow: 0 0 10px 3px rgba(180, 80, 255, 0.4); }
+  50%       { box-shadow: 0 0 22px 8px rgba(220, 120, 255, 0.75); }
+}
+
+@keyframes gacha-bag-float {
+  0%, 100% { transform: translate(-50%, -52%); }
+  50%       { transform: translate(-50%, -60%); }
 }
 
 /****** Session seat glow *****/

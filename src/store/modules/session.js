@@ -32,7 +32,8 @@ const state = () => ({
   nominatorsToday: [],
   isGachaMode: false,
   gachaPool: [],
-  gachaRequestCount: 0
+  gachaRequestCount: 0,
+  gachaDrawPlayerId: null
 });
 
 const getters = {};
@@ -58,6 +59,7 @@ const mutations = {
   claimSeat: set("claimedSeat"),
   distributeRoles: set("isRolesDistributed"),
   setGachaMode: set("isGachaMode"),
+  setGachaDrawPlayerId: set("gachaDrawPlayerId"),
   startGachaSession(state, pool) {
     state.gachaPool = [...pool];
     state.isGachaMode = true;

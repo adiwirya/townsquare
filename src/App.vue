@@ -37,6 +37,12 @@
     <GameStateModal />
     <Gradients />
     <PhaseAnnouncement />
+    <GachaModal
+      v-if="gachaDrawPlayer"
+      :show="true"
+      :player="gachaDrawPlayer"
+      @close="$store.commit('session/setGachaDrawPlayerId', null)"
+    />
     <span id="version">v{{ version }}</span>
   </div>
 </template>
@@ -58,9 +64,11 @@ import FabledModal from "@/components/modals/FabledModal";
 import VoteHistoryModal from "@/components/modals/VoteHistoryModal";
 import GameStateModal from "@/components/modals/GameStateModal";
 import PhaseAnnouncement from "./components/PhaseAnnouncement";
+import GachaModal from "./components/modals/GachaModal";
 
 export default {
   components: {
+    GachaModal,
     PhaseAnnouncement,
     GameStateModal,
     VoteHistoryModal,
@@ -78,7 +86,12 @@ export default {
   },
   computed: {
     ...mapState(["grimoire", "session"]),
-    ...mapState("players", ["players"])
+    ...mapState("players", ["players"]),
+    gachaDrawPlayer() {
+      const id = this.session.gachaDrawPlayerId;
+      if (!id) return null;
+      return this.players.find(p => p.id === id) || null;
+    }
   },
   data() {
     return {
