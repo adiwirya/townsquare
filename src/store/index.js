@@ -106,7 +106,8 @@ export default new Vuex.Store({
       isMuted: false,
       isImageOptIn: false,
       zoom: 0,
-      background: ""
+      background: "",
+      roundCount: 0
     },
     modals: {
       edition: false,
@@ -164,6 +165,7 @@ export default new Vuex.Store({
   mutations: {
     setZoom: set("zoom"),
     setBackground: set("background"),
+    setRoundCount: set("roundCount"),
     toggleMuted: toggle("isMuted"),
     toggleMenu: toggle("isMenuOpen"),
     toggleNightOrder: toggle("isNightOrder"),

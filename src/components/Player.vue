@@ -10,7 +10,9 @@
           'no-vote': player.isVoteless,
           you: session.sessionId && player.id && player.id === session.playerId,
           'vote-yes': session.votes[index],
-          'vote-lock': voteLocked
+          'vote-lock': voteLocked,
+          'has-nominated': !session.isSpectator && session.nominatorsToday.includes(index),
+          'been-nominated': !session.isSpectator && session.nominatedToday.includes(index)
         },
         player.role.team
       ]"
@@ -41,6 +43,17 @@
         :role="player.role"
         @set-role="$emit('trigger', ['openRoleModal'])"
       />
+
+      <!-- Gacha sealed role reveal -->
+      <div
+        class="gacha-seal"
+        v-if="session.sealedRole && session.sealedRole.index === index"
+        @click.stop="revealGachaRole"
+        title="Click to reveal your role!"
+      >
+        <font-awesome-icon icon="question" />
+        <span>Draw!</span>
+      </div>
 
       <!-- Overlay icons -->
       <div class="overlay">
@@ -253,6 +266,20 @@ export default {
     };
   },
   methods: {
+    revealGachaRole() {
+      const sealed = this.session.sealedRole;
+      if (!sealed) return;
+      const role =
+        this.$store.state.roles.get(sealed.roleId) ||
+        this.$store.getters.rolesJSONbyId.get(sealed.roleId) ||
+        {};
+      this.$store.commit("players/update", {
+        player: this.$store.state.players.players[sealed.index],
+        property: "role",
+        value: role
+      });
+      this.$store.commit("session/setSealedRole", null);
+    },
     changePronouns() {
       if (this.session.isSpectator && this.player.id !== this.session.playerId)
         return;
@@ -609,6 +636,53 @@ li.move:not(.from) .player .overlay svg.move {
   position: absolute;
   margin-top: -15%;
   right: 2px;
+}
+
+/****** Nomination tracking *****/
+.player.has-nominated .name {
+  border-bottom: 2px solid rgba(255, 200, 50, 0.6);
+}
+.player.been-nominated .name {
+  border-bottom: 2px solid rgba(255, 80, 80, 0.7);
+}
+
+/****** Gacha sealed role *****/
+.gacha-seal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, rgba(80, 0, 120, 0.92) 0%, rgba(20, 0, 40, 0.96) 100%);
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 3;
+  gap: 4px;
+  animation: gacha-pulse 2s ease-in-out infinite;
+
+  svg {
+    font-size: 2em;
+    color: gold;
+    filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.8));
+  }
+  span {
+    font-size: 0.65em;
+    color: gold;
+    font-weight: bold;
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.9);
+  }
+  &:hover {
+    background: radial-gradient(circle, rgba(120, 0, 180, 0.95) 0%, rgba(40, 0, 60, 0.98) 100%);
+  }
+}
+
+@keyframes gacha-pulse {
+  0%, 100% { box-shadow: 0 0 8px 2px rgba(200, 100, 255, 0.4); }
+  50% { box-shadow: 0 0 18px 6px rgba(200, 100, 255, 0.8); }
 }
 
 /****** Session seat glow *****/

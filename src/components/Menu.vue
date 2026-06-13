@@ -138,6 +138,10 @@
               Send Characters
               <em><font-awesome-icon icon="theater-masks"/></em>
             </li>
+            <li v-if="!session.isSpectator" @click="distributeRolesGacha">
+              Gacha Roles
+              <em><font-awesome-icon icon="dice"/></em>
+            </li>
             <li
               v-if="session.voteHistory.length || !session.isSpectator"
               @click="toggleModal('voteHistory')"
@@ -343,6 +347,20 @@ export default {
       this.$store.commit("toggleNight");
       if (this.grimoire.isNight) {
         this.$store.commit("session/setMarkedPlayer", -1);
+        this.$store.commit("setRoundCount", this.grimoire.roundCount + 1);
+      } else {
+        this.$store.commit("session/resetNominations");
+      }
+    },
+    distributeRolesGacha() {
+      if (this.session.isSpectator) return;
+      const popup =
+        "Gacha mode: each player will draw their own role. Proceed?";
+      if (confirm(popup)) {
+        this.$store.commit("session/distributeRolesGacha", true);
+        setTimeout(() => {
+          this.$store.commit("session/distributeRolesGacha", false);
+        }, 2000);
       }
     },
     ...mapMutations([

@@ -36,6 +36,7 @@
     <VoteHistoryModal />
     <GameStateModal />
     <Gradients />
+    <PhaseAnnouncement />
     <span id="version">v{{ version }}</span>
   </div>
 </template>
@@ -56,9 +57,11 @@ import NightOrderModal from "./components/modals/NightOrderModal";
 import FabledModal from "@/components/modals/FabledModal";
 import VoteHistoryModal from "@/components/modals/VoteHistoryModal";
 import GameStateModal from "@/components/modals/GameStateModal";
+import PhaseAnnouncement from "./components/PhaseAnnouncement";
 
 export default {
   components: {
+    PhaseAnnouncement,
     GameStateModal,
     VoteHistoryModal,
     FabledModal,

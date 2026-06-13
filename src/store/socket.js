@@ -89,6 +89,13 @@ class LiveSession {
           );
         }
         this._store.commit("session/nomination", { nomination: payload });
+        if (payload && Array.isArray(payload)) {
+          this._store.commit("session/trackNomination", payload);
+        }
+      })
+      .on("broadcast", { event: "dayStart" }, () => {
+        if (!this._isSpectator) return;
+        this._store.commit("session/resetNominations");
       })
       .on("broadcast", { event: "swap" }, ({ payload }) => {
         if (!this._isSpectator) return;
@@ -240,6 +247,9 @@ class LiveSession {
         break;
       case "bye":
         this._handleBye(payload);
+        break;
+      case "gachaRole":
+        this._store.commit("session/setSealedRole", payload);
         break;
     }
   }
@@ -553,6 +563,18 @@ class LiveSession {
     });
   }
 
+  distributeRolesGacha() {
+    if (this._isSpectator) return;
+    this._store.state.players.players.forEach((player, index) => {
+      if (player.id && player.role && player.role.id) {
+        this._sendDirect(player.id, "gachaRole", {
+          index,
+          roleId: player.role.id
+        });
+      }
+    });
+  }
+
   /**
    * Broadcast a nomination. ST only.
    */
@@ -579,7 +601,11 @@ class LiveSession {
 
   setIsNight() {
     if (this._isSpectator) return;
-    this._send("isNight", this._store.state.grimoire.isNight);
+    const isNight = this._store.state.grimoire.isNight;
+    this._send("isNight", isNight);
+    if (!isNight) {
+      this._send("dayStart");
+    }
   }
 
   setVoteHistoryAllowed() {
@@ -699,6 +725,11 @@ export default store => {
       case "session/distributeRoles":
         if (payload) {
           session.distributeRoles();
+        }
+        break;
+      case "session/distributeRolesGacha":
+        if (payload) {
+          session.distributeRolesGacha();
         }
         break;
       case "session/nomination":

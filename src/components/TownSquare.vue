@@ -239,10 +239,21 @@ export default {
       if (to === undefined) {
         this.cancel();
         if (from !== this.nominate) {
+          if (this.session.nominatorsToday.includes(from)) {
+            alert(`${this.players[from].name} has already nominated today!`);
+            return;
+          }
           this.nominate = from;
         }
       } else {
-        const nomination = [this.nominate, this.players.indexOf(to)];
+        const nomineeIdx = this.players.indexOf(to);
+        if (this.session.nominatedToday.includes(nomineeIdx)) {
+          alert(`${to.name} has already been nominated today!`);
+          this.cancel();
+          return;
+        }
+        const nomination = [this.nominate, nomineeIdx];
+        this.$store.commit("session/trackNomination", nomination);
         this.$store.commit("session/nomination", { nomination });
         this.cancel();
       }

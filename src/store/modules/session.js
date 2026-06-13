@@ -27,7 +27,10 @@ const state = () => ({
   voteHistory: [],
   markedPlayer: -1,
   isVoteHistoryAllowed: true,
-  isRolesDistributed: false
+  isRolesDistributed: false,
+  nominatedToday: [],
+  nominatorsToday: [],
+  sealedRole: null
 });
 
 const getters = {};
@@ -52,6 +55,20 @@ const mutations = {
   setVoteHistoryAllowed: set("isVoteHistoryAllowed"),
   claimSeat: set("claimedSeat"),
   distributeRoles: set("isRolesDistributed"),
+  distributeRolesGacha: set("isRolesDistributed"),
+  setSealedRole: set("sealedRole"),
+  trackNomination(state, [nominatorIdx, nomineeIdx]) {
+    if (!state.nominatorsToday.includes(nominatorIdx)) {
+      state.nominatorsToday = [...state.nominatorsToday, nominatorIdx];
+    }
+    if (!state.nominatedToday.includes(nomineeIdx)) {
+      state.nominatedToday = [...state.nominatedToday, nomineeIdx];
+    }
+  },
+  resetNominations(state) {
+    state.nominatedToday = [];
+    state.nominatorsToday = [];
+  },
   setSessionId(state, sessionId) {
     state.sessionId = sessionId
       .toLocaleLowerCase()
