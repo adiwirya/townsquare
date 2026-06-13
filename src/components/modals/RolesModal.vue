@@ -168,9 +168,9 @@ export default {
         .map(id => [Math.random(), id])
         .sort((a, b) => a[0] - b[0])
         .map(a => a[1]);
-      // Clear existing (non-traveler) roles from players
+      // Clear all existing roles
       this.players.forEach(player => {
-        if (player.role.team !== "traveler") {
+        if (player.role && player.role.id) {
           this.$store.commit("players/update", { player, property: "role", value: {} });
         }
       });
