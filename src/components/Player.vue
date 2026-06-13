@@ -44,14 +44,14 @@
         @set-role="$emit('trigger', ['openRoleModal'])"
       />
 
-      <!-- Gacha sealed role reveal -->
+      <!-- Gacha draw button (spectator, my seat, no role yet) -->
       <div
-        class="gacha-seal"
-        v-if="session.sealedRole && session.sealedRole.index === index"
-        @click.stop="revealGachaRole"
-        title="Click to reveal your role!"
+        class="gacha-draw"
+        v-if="session.isGachaMode && player.id === session.playerId && !player.role.id"
+        @click.stop="drawGachaRole"
+        title="Draw your fate!"
       >
-        <font-awesome-icon icon="question" />
+        <font-awesome-icon icon="dice" />
         <span>Draw!</span>
       </div>
 
@@ -266,19 +266,8 @@ export default {
     };
   },
   methods: {
-    revealGachaRole() {
-      const sealed = this.session.sealedRole;
-      if (!sealed) return;
-      const role =
-        this.$store.state.roles.get(sealed.roleId) ||
-        this.$store.getters.rolesJSONbyId.get(sealed.roleId) ||
-        {};
-      this.$store.commit("players/update", {
-        player: this.$store.state.players.players[sealed.index],
-        property: "role",
-        value: role
-      });
-      this.$store.commit("session/setSealedRole", null);
+    drawGachaRole() {
+      this.$store.commit("session/drawGachaRole");
     },
     changePronouns() {
       if (this.session.isSpectator && this.player.id !== this.session.playerId)
@@ -647,7 +636,7 @@ li.move:not(.from) .player .overlay svg.move {
 }
 
 /****** Gacha sealed role *****/
-.gacha-seal {
+.gacha-draw {
   position: absolute;
   top: 0;
   left: 0;

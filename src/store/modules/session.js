@@ -30,7 +30,9 @@ const state = () => ({
   isRolesDistributed: false,
   nominatedToday: [],
   nominatorsToday: [],
-  sealedRole: null
+  isGachaMode: false,
+  gachaPool: [],
+  gachaRequestCount: 0
 });
 
 const getters = {};
@@ -55,8 +57,17 @@ const mutations = {
   setVoteHistoryAllowed: set("isVoteHistoryAllowed"),
   claimSeat: set("claimedSeat"),
   distributeRoles: set("isRolesDistributed"),
-  distributeRolesGacha: set("isRolesDistributed"),
-  setSealedRole: set("sealedRole"),
+  setGachaMode: set("isGachaMode"),
+  startGachaSession(state, pool) {
+    state.gachaPool = [...pool];
+    state.isGachaMode = true;
+  },
+  popGachaRole(state) {
+    state.gachaPool = state.gachaPool.slice(1);
+  },
+  drawGachaRole(state) {
+    state.gachaRequestCount++;
+  },
   trackNomination(state, [nominatorIdx, nomineeIdx]) {
     if (!state.nominatorsToday.includes(nominatorIdx)) {
       state.nominatorsToday = [...state.nominatorsToday, nominatorIdx];

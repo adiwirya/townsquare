@@ -51,6 +51,16 @@
         <font-awesome-icon icon="people-arrows" />
         Assign {{ selectedRoles }} characters randomly
       </div>
+      <div
+        class="button gacha"
+        @click="startGacha"
+        :class="{
+          disabled: selectedRoles > nonTravelers || !selectedRoles
+        }"
+      >
+        <font-awesome-icon icon="dice" />
+        Gacha mode — players draw their own
+      </div>
       <div class="button" @click="selectRandomRoles">
         <font-awesome-icon icon="random" />
         Shuffle characters
@@ -146,6 +156,26 @@ export default {
         });
         this.$store.commit("toggleModal", "roles");
       }
+    },
+    startGacha() {
+      if (this.selectedRoles > this.nonTravelers || !this.selectedRoles) return;
+      // Build shuffled pool of role IDs from selected roles
+      const pool = Object.values(this.roleSelection)
+        .reduce((a, roles) => [
+          ...a,
+          ...roles.reduce((b, r) => [...b, ...Array(r.selected).fill(r.id)], [])
+        ], [])
+        .map(id => [Math.random(), id])
+        .sort((a, b) => a[0] - b[0])
+        .map(a => a[1]);
+      // Clear existing (non-traveler) roles from players
+      this.players.forEach(player => {
+        if (player.role.team !== "traveler") {
+          this.$store.commit("players/update", { player, property: "role", value: {} });
+        }
+      });
+      this.$store.commit("session/startGachaSession", pool);
+      this.toggleModal("roles");
     },
     ...mapMutations(["toggleModal"])
   },
@@ -259,6 +289,14 @@ ul.tokens {
     &.demon {
       color: $demon;
     }
+  }
+}
+
+.button.gacha {
+  background: linear-gradient(135deg, #3d0066, #6a0dad);
+  border-color: #9b30d9;
+  &:hover:not(.disabled) {
+    background: linear-gradient(135deg, #5a0099, #8b00cc);
   }
 }
 

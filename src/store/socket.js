@@ -97,6 +97,14 @@ class LiveSession {
         if (!this._isSpectator) return;
         this._store.commit("session/resetNominations");
       })
+      .on("broadcast", { event: "gachaStart" }, () => {
+        if (!this._isSpectator) return;
+        this._store.commit("session/setGachaMode", true);
+      })
+      .on("broadcast", { event: "gachaEnd" }, () => {
+        if (!this._isSpectator) return;
+        this._store.commit("session/setGachaMode", false);
+      })
       .on("broadcast", { event: "swap" }, ({ payload }) => {
         if (!this._isSpectator) return;
         this._store.commit("players/swap", payload);
@@ -249,7 +257,10 @@ class LiveSession {
         this._handleBye(payload);
         break;
       case "gachaRole":
-        this._store.commit("session/setSealedRole", payload);
+        this._handleGachaReceive(payload);
+        break;
+      case "requestGacha":
+        this._handleGachaRequest(payload);
         break;
     }
   }
@@ -563,16 +574,47 @@ class LiveSession {
     });
   }
 
-  distributeRolesGacha() {
+  broadcastGachaStart() {
     if (this._isSpectator) return;
-    this._store.state.players.players.forEach((player, index) => {
-      if (player.id && player.role && player.role.id) {
-        this._sendDirect(player.id, "gachaRole", {
-          index,
-          roleId: player.role.id
-        });
-      }
-    });
+    this._send("gachaStart");
+  }
+
+  requestGacha() {
+    if (!this._isSpectator) return;
+    this._sendDirect("host", "requestGacha", this._store.state.session.playerId);
+  }
+
+  _handleGachaRequest(playerId) {
+    if (this._isSpectator) return;
+    const pool = this._store.state.session.gachaPool;
+    if (!pool.length) return;
+    const roleId = pool[0];
+    this._store.commit("session/popGachaRole");
+    const players = this._store.state.players.players;
+    const index = players.findIndex(p => p.id === playerId);
+    if (index < 0) return;
+    const role =
+      this._store.state.roles.get(roleId) ||
+      this._store.getters.rolesJSONbyId.get(roleId) ||
+      {};
+    this._store.commit("players/update", { player: players[index], property: "role", value: role });
+    this._sendDirect(playerId, "gachaRole", { index, roleId });
+    if (this._store.state.session.gachaPool.length === 0) {
+      this._store.commit("session/setGachaMode", false);
+      this._send("gachaEnd");
+    }
+  }
+
+  _handleGachaReceive({ index, roleId }) {
+    const role =
+      this._store.state.roles.get(roleId) ||
+      this._store.getters.rolesJSONbyId.get(roleId) ||
+      {};
+    const player = this._store.state.players.players[index];
+    if (player) {
+      this._store.commit("players/update", { player, property: "role", value: role });
+    }
+    this._store.commit("session/setGachaMode", false);
   }
 
   /**
@@ -727,10 +769,11 @@ export default store => {
           session.distributeRoles();
         }
         break;
-      case "session/distributeRolesGacha":
-        if (payload) {
-          session.distributeRolesGacha();
-        }
+      case "session/startGachaSession":
+        session.broadcastGachaStart();
+        break;
+      case "session/drawGachaRole":
+        session.requestGacha();
         break;
       case "session/nomination":
       case "session/setNomination":
