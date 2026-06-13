@@ -1,9 +1,19 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.VUE_APP_SUPABASE_URL,
-  process.env.VUE_APP_SUPABASE_ANON_KEY
-);
+let supabase;
+function getSupabase() {
+  if (!supabase) {
+    const url = process.env.VUE_APP_SUPABASE_URL;
+    const key = process.env.VUE_APP_SUPABASE_ANON_KEY;
+    if (!url || !key) {
+      throw new Error(
+        "Missing Supabase config. Set VUE_APP_SUPABASE_URL and VUE_APP_SUPABASE_ANON_KEY."
+      );
+    }
+    supabase = createClient(url, key);
+  }
+  return supabase;
+}
 
 class LiveSession {
   constructor(store) {
@@ -20,9 +30,12 @@ class LiveSession {
   /**
    * Broadcast a message to all channel subscribers.
    */
-  _send(event, payload = null) {
+  async _send(event, payload = null) {
     if (!this._channel) return;
-    this._channel.send({ type: "broadcast", event, payload });
+    const { error } = await this._channel.send({ type: "broadcast", event, payload });
+    if (error && process.env.NODE_ENV !== "production") {
+      console.warn(`[socket] send "${event}" failed:`, error);
+    }
   }
 
   /**
@@ -42,7 +55,7 @@ class LiveSession {
   _open(channelId) {
     this.disconnect();
 
-    this._channel = supabase.channel("game:" + channelId, {
+    this._channel = getSupabase().channel("game:" + channelId, {
       config: { broadcast: { self: false } }
     });
 
@@ -139,10 +152,16 @@ class LiveSession {
       .subscribe(async status => {
         if (status === "SUBSCRIBED") {
           this._store.commit("session/setReconnecting", false);
-          await this._channel.track({
-            playerId: this._store.state.session.playerId,
-            isHost: !this._isSpectator
-          });
+          try {
+            await this._channel.track({
+              playerId: this._store.state.session.playerId,
+              isHost: !this._isSpectator
+            });
+          } catch (err) {
+            if (process.env.NODE_ENV !== "production") {
+              console.warn("[socket] presence track failed:", err);
+            }
+          }
           if (this._isSpectator) {
             // Ask host for current gamestate
             this._sendDirect(
@@ -155,6 +174,8 @@ class LiveSession {
           }
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           this._store.commit("session/setReconnecting", true);
+        } else if (status === "CLOSED") {
+          this._store.commit("session/setReconnecting", false);
         }
       });
   }
@@ -192,7 +213,7 @@ class LiveSession {
           this._store.state.session.playerId
         );
       }
-      supabase.removeChannel(this._channel);
+      getSupabase().removeChannel(this._channel);
       this._channel = null;
     }
   }
