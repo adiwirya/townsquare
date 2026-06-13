@@ -187,9 +187,7 @@ class LiveSession {
     if (!this._store.state.session.playerId) {
       this._store.commit(
         "session/setPlayerId",
-        Math.random()
-          .toString(36)
-          .substr(2)
+        crypto.randomUUID()
       );
     }
     this._store.commit("session/setPlayerCount", 0);
@@ -201,13 +199,13 @@ class LiveSession {
   /**
    * Disconnect from the current session.
    */
-  disconnect() {
+  async disconnect() {
     this._store.commit("session/setPlayerCount", 0);
     this._store.commit("session/setPing", 0);
     this._store.commit("session/setReconnecting", false);
     if (this._channel) {
       if (this._isSpectator) {
-        this._sendDirect(
+        await this._sendDirect(
           "host",
           "bye",
           this._store.state.session.playerId
@@ -677,7 +675,13 @@ class LiveSession {
 }
 
 export default store => {
-  const session = new LiveSession(store);
+  let session;
+  try {
+    session = new LiveSession(store);
+  } catch (err) {
+    console.error("[socket] Failed to initialize live session:", err.message);
+    return;
+  }
 
   store.subscribe(({ type, payload }, state) => {
     switch (type) {
