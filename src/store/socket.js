@@ -1,217 +1,166 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.VUE_APP_SUPABASE_URL,
+  process.env.VUE_APP_SUPABASE_ANON_KEY
+);
+
 class LiveSession {
   constructor(store) {
-    this._wss = "wss://live.clocktower.online:8080/";
-    // this._wss = "ws://localhost:8081/"; // uncomment if using local server with NODE_ENV=development
-    this._socket = null;
+    this._store = store;
+    this._channel = null;
     this._isSpectator = true;
     this._gamestate = [];
-    this._store = store;
-    this._pingInterval = 30 * 1000; // 30 seconds between pings
-    this._pingTimer = null;
-    this._reconnectTimer = null;
-    this._players = {}; // map of players connected to a session
-    this._pings = {}; // map of player IDs to ping
-    // reconnect to previous session
+
     if (this._store.state.session.sessionId) {
       this.connect(this._store.state.session.sessionId);
     }
   }
 
   /**
-   * Open a new session for the passed channel.
-   * @param channel
-   * @private
+   * Broadcast a message to all channel subscribers.
    */
-  _open(channel) {
-    this.disconnect();
-    this._socket = new WebSocket(
-      this._wss +
-        channel +
-        "/" +
-        (this._isSpectator ? this._store.state.session.playerId : "host")
-    );
-    this._socket.addEventListener("message", this._handleMessage.bind(this));
-    this._socket.onopen = this._onOpen.bind(this);
-    this._socket.onclose = err => {
-      this._socket = null;
-      clearInterval(this._pingTimer);
-      this._pingTimer = null;
-      if (err.code !== 1000) {
-        // connection interrupted, reconnect after 3 seconds
-        this._store.commit("session/setReconnecting", true);
-        this._reconnectTimer = setTimeout(
-          () => this.connect(channel),
-          3 * 1000
-        );
-      } else {
-        this._store.commit("session/setSessionId", "");
-        if (err.reason) alert(err.reason);
-      }
-    };
+  _send(event, payload = null) {
+    if (!this._channel) return;
+    this._channel.send({ type: "broadcast", event, payload });
   }
 
   /**
-   * Send a message through the socket.
-   * @param command
-   * @param params
-   * @private
+   * Send a message to a specific player, or broadcast if no playerId given.
    */
-  _send(command, params) {
-    if (this._socket && this._socket.readyState === 1) {
-      this._socket.send(JSON.stringify([command, params]));
-    }
-  }
-
-  /**
-   * Send a message directly to a single playerId, if provided.
-   * Otherwise broadcast it.
-   * @param playerId player ID or "host", optional
-   * @param command
-   * @param params
-   * @private
-   */
-  _sendDirect(playerId, command, params) {
+  _sendDirect(playerId, event, payload) {
     if (playerId) {
-      this._send("direct", { [playerId]: [command, params] });
+      this._send("direct", { target: playerId, event, payload });
     } else {
-      this._send(command, params);
+      this._send(event, payload);
     }
   }
 
   /**
-   * Open event handler for socket.
-   * @private
+   * Subscribe to a Supabase Realtime channel for the given session.
    */
-  _onOpen() {
-    if (this._isSpectator) {
-      this._sendDirect(
-        "host",
-        "getGamestate",
-        this._store.state.session.playerId
-      );
-    } else {
-      this.sendGamestate();
-    }
-    this._ping();
-  }
+  _open(channelId) {
+    this.disconnect();
 
-  /**
-   * Send a ping message with player ID and ST flag.
-   * @private
-   */
-  _ping() {
-    this._handlePing();
-    this._send("ping", [
-      this._isSpectator
-        ? this._store.state.session.playerId
-        : Object.keys(this._players).length,
-      "latency"
-    ]);
-    clearTimeout(this._pingTimer);
-    this._pingTimer = setTimeout(this._ping.bind(this), this._pingInterval);
-  }
+    this._channel = supabase.channel("game:" + channelId, {
+      config: { broadcast: { self: false } }
+    });
 
-  /**
-   * Handle an incoming socket message.
-   * @param data
-   * @private
-   */
-  _handleMessage({ data }) {
-    let command, params;
-    try {
-      [command, params] = JSON.parse(data);
-    } catch (err) {
-      console.log("unsupported socket message", data);
-    }
-    switch (command) {
-      case "getGamestate":
-        this.sendGamestate(params);
-        break;
-      case "edition":
-        this._updateEdition(params);
-        break;
-      case "fabled":
-        this._updateFabled(params);
-        break;
-      case "gs":
-        this._updateGamestate(params);
-        break;
-      case "player":
-        this._updatePlayer(params);
-        break;
-      case "claim":
-        this._updateSeat(params);
-        break;
-      case "ping":
-        this._handlePing(params);
-        break;
-      case "nomination":
+    this._channel
+      // Targeted direct messages
+      .on("broadcast", { event: "direct" }, ({ payload }) => {
+        this._handleDirect(payload);
+      })
+      // Broadcast messages (host → all spectators)
+      .on("broadcast", { event: "edition" }, ({ payload }) => {
+        this._updateEdition(payload);
+      })
+      .on("broadcast", { event: "fabled" }, ({ payload }) => {
+        this._updateFabled(payload);
+      })
+      .on("broadcast", { event: "gs" }, ({ payload }) => {
+        this._updateGamestate(payload);
+      })
+      .on("broadcast", { event: "player" }, ({ payload }) => {
+        this._updatePlayer(payload);
+      })
+      .on("broadcast", { event: "claim" }, ({ payload }) => {
+        this._updateSeat(payload);
+      })
+      .on("broadcast", { event: "nomination" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        if (!params) {
-          // create vote history record
+        if (!payload) {
           this._store.commit(
             "session/addHistory",
             this._store.state.players.players
           );
         }
-        this._store.commit("session/nomination", { nomination: params });
-        break;
-      case "swap":
+        this._store.commit("session/nomination", { nomination: payload });
+      })
+      .on("broadcast", { event: "swap" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        this._store.commit("players/swap", params);
-        break;
-      case "move":
+        this._store.commit("players/swap", payload);
+      })
+      .on("broadcast", { event: "move" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        this._store.commit("players/move", params);
-        break;
-      case "remove":
+        this._store.commit("players/move", payload);
+      })
+      .on("broadcast", { event: "remove" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        this._store.commit("players/remove", params);
-        break;
-      case "marked":
+        this._store.commit("players/remove", payload);
+      })
+      .on("broadcast", { event: "marked" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        this._store.commit("session/setMarkedPlayer", params);
-        break;
-      case "isNight":
+        this._store.commit("session/setMarkedPlayer", payload);
+      })
+      .on("broadcast", { event: "isNight" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        this._store.commit("toggleNight", params);
-        break;
-      case "isVoteHistoryAllowed":
+        this._store.commit("toggleNight", payload);
+      })
+      .on("broadcast", { event: "isVoteHistoryAllowed" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        this._store.commit("session/setVoteHistoryAllowed", params);
+        this._store.commit("session/setVoteHistoryAllowed", payload);
         this._store.commit("session/clearVoteHistory");
-        break;
-      case "votingSpeed":
+      })
+      .on("broadcast", { event: "votingSpeed" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        this._store.commit("session/setVotingSpeed", params);
-        break;
-      case "clearVoteHistory":
+        this._store.commit("session/setVotingSpeed", payload);
+      })
+      .on("broadcast", { event: "clearVoteHistory" }, () => {
         if (!this._isSpectator) return;
         this._store.commit("session/clearVoteHistory");
-        break;
-      case "isVoteInProgress":
+      })
+      .on("broadcast", { event: "isVoteInProgress" }, ({ payload }) => {
         if (!this._isSpectator) return;
-        this._store.commit("session/setVoteInProgress", params);
-        break;
-      case "vote":
-        this._handleVote(params);
-        break;
-      case "lock":
-        this._handleLock(params);
-        break;
-      case "bye":
-        this._handleBye(params);
-        break;
-      case "pronouns":
-        this._updatePlayerPronouns(params);
-        break;
-    }
+        this._store.commit("session/setVoteInProgress", payload);
+      })
+      .on("broadcast", { event: "vote" }, ({ payload }) => {
+        this._handleVote(payload);
+      })
+      .on("broadcast", { event: "lock" }, ({ payload }) => {
+        this._handleLock(payload);
+      })
+      .on("broadcast", { event: "pronouns" }, ({ payload }) => {
+        this._updatePlayerPronouns(payload);
+      })
+      // Presence: track connected players for player count
+      .on("presence", { event: "sync" }, () => {
+        const count = Object.values(this._channel.presenceState())
+          .flat()
+          .filter(p => !p.isHost).length;
+        this._store.commit("session/setPlayerCount", count);
+      })
+      .on("presence", { event: "leave" }, ({ leftPresences }) => {
+        if (this._isSpectator) return;
+        leftPresences.forEach(({ playerId }) => {
+          if (playerId) this._handleBye(playerId);
+        });
+      })
+      .subscribe(async status => {
+        if (status === "SUBSCRIBED") {
+          this._store.commit("session/setReconnecting", false);
+          await this._channel.track({
+            playerId: this._store.state.session.playerId,
+            isHost: !this._isSpectator
+          });
+          if (this._isSpectator) {
+            // Ask host for current gamestate
+            this._sendDirect(
+              "host",
+              "getGamestate",
+              this._store.state.session.playerId
+            );
+          } else {
+            this.sendGamestate();
+          }
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          this._store.commit("session/setReconnecting", true);
+        }
+      });
   }
 
   /**
-   * Connect to a new live session, either as host or spectator.
-   * Set a unique playerId if there isn't one yet.
-   * @param channel
+   * Connect to a session channel.
    */
   connect(channel) {
     if (!this._store.state.session.playerId) {
@@ -222,7 +171,6 @@ class LiveSession {
           .substr(2)
       );
     }
-    this._pings = {};
     this._store.commit("session/setPlayerCount", 0);
     this._store.commit("session/setPing", 0);
     this._isSpectator = this._store.state.session.isSpectator;
@@ -230,28 +178,57 @@ class LiveSession {
   }
 
   /**
-   * Close the current session, if any.
+   * Disconnect from the current session.
    */
   disconnect() {
-    this._pings = {};
     this._store.commit("session/setPlayerCount", 0);
     this._store.commit("session/setPing", 0);
     this._store.commit("session/setReconnecting", false);
-    clearTimeout(this._reconnectTimer);
-    if (this._socket) {
+    if (this._channel) {
       if (this._isSpectator) {
-        this._sendDirect("host", "bye", this._store.state.session.playerId);
+        this._sendDirect(
+          "host",
+          "bye",
+          this._store.state.session.playerId
+        );
       }
-      this._socket.close(1000);
-      this._socket = null;
+      supabase.removeChannel(this._channel);
+      this._channel = null;
     }
   }
 
   /**
-   * Publish the current gamestate.
-   * Optional param to reduce traffic. (send only player data)
-   * @param playerId
-   * @param isLightweight
+   * Route an incoming direct message to the right handler.
+   * Format: { target: playerId|'host', event, payload }
+   */
+  _handleDirect({ target, event, payload }) {
+    const myId = this._isSpectator
+      ? this._store.state.session.playerId
+      : "host";
+    if (target !== myId) return;
+    switch (event) {
+      case "getGamestate":
+        this.sendGamestate(payload);
+        break;
+      case "gs":
+        this._updateGamestate(payload);
+        break;
+      case "edition":
+        this._updateEdition(payload);
+        break;
+      case "player":
+        this._updatePlayer(payload);
+        break;
+      case "bye":
+        this._handleBye(payload);
+        break;
+    }
+  }
+
+  /**
+   * Publish the current gamestate. ST only.
+   * @param playerId send directly to this player, or broadcast if empty
+   * @param isLightweight only send player list (no edition/state)
    */
   sendGamestate(playerId = "", isLightweight = false) {
     if (this._isSpectator) return;
@@ -290,9 +267,7 @@ class LiveSession {
   }
 
   /**
-   * Update the gamestate based on incoming data.
-   * @param data
-   * @private
+   * Apply an incoming gamestate update. Spectator only.
    */
   _updateGamestate(data) {
     if (!this._isSpectator) return;
@@ -310,7 +285,6 @@ class LiveSession {
       fabled
     } = data;
     const players = this._store.state.players.players;
-    // adjust number of players
     if (players.length < gamestate.length) {
       for (let x = players.length; x < gamestate.length; x++) {
         this._store.commit("players/add", gamestate[x].name);
@@ -320,18 +294,15 @@ class LiveSession {
         this._store.commit("players/remove", x - 1);
       }
     }
-    // update status for each player
     gamestate.forEach((state, x) => {
       const player = players[x];
       const { roleId } = state;
-      // update relevant properties
       ["name", "id", "isDead", "isVoteless", "pronouns"].forEach(property => {
         const value = state[property];
         if (player[property] !== value) {
           this._store.commit("players/update", { player, property, value });
         }
       });
-      // roles are special, because of travelers
       if (roleId && player.role.id !== roleId) {
         const role =
           this._store.state.roles.get(roleId) ||
@@ -369,8 +340,7 @@ class LiveSession {
   }
 
   /**
-   * Publish an edition update. ST only
-   * @param playerId
+   * Publish edition and roles. ST only.
    */
   sendEdition(playerId = "") {
     if (this._isSpectator) return;
@@ -386,10 +356,7 @@ class LiveSession {
   }
 
   /**
-   * Update edition and roles for custom editions.
-   * @param edition
-   * @param roles
-   * @private
+   * Apply incoming edition/roles update. Spectator only.
    */
   _updateEdition({ edition, roles }) {
     if (!this._isSpectator) return;
@@ -415,22 +382,14 @@ class LiveSession {
   }
 
   /**
-   * Publish a fabled update. ST only
+   * Publish fabled list update. ST only.
    */
   sendFabled() {
     if (this._isSpectator) return;
     const { fabled } = this._store.state.players;
-    this._send(
-      "fabled",
-      fabled.map(f => (f.isCustom ? f : { id: f.id }))
-    );
+    this._send("fabled", fabled.map(f => (f.isCustom ? f : { id: f.id })));
   }
 
-  /**
-   * Update fabled roles.
-   * @param fabled
-   * @private
-   */
   _updateFabled(fabled) {
     if (!this._isSpectator) return;
     this._store.commit("players/setFabled", {
@@ -439,25 +398,18 @@ class LiveSession {
   }
 
   /**
-   * Publish a player update.
-   * @param player
-   * @param property
-   * @param value
+   * Publish a single player property update. ST only.
    */
   sendPlayer({ player, property, value }) {
     if (this._isSpectator || property === "reminders") return;
     const index = this._store.state.players.players.indexOf(player);
+    if (index < 0) return;
+    while (this._gamestate.length <= index) this._gamestate.push({});
     if (property === "role") {
       if (value.team && value.team === "traveler") {
-        // update local gamestate to remember this player as a traveler
         this._gamestate[index].roleId = value.id;
-        this._send("player", {
-          index,
-          property,
-          value: value.id
-        });
+        this._send("player", { index, property, value: value.id });
       } else if (this._gamestate[index].roleId) {
-        // player was previously a traveler
         delete this._gamestate[index].roleId;
         this._send("player", { index, property, value: "" });
       }
@@ -467,27 +419,20 @@ class LiveSession {
   }
 
   /**
-   * Update a player based on incoming data. Player only.
-   * @param index
-   * @param property
-   * @param value
-   * @private
+   * Apply an incoming player property update. Spectator only.
    */
   _updatePlayer({ index, property, value }) {
     if (!this._isSpectator) return;
     const player = this._store.state.players.players[index];
     if (!player) return;
-    // special case where a player stops being a traveler
     if (property === "role") {
       if (!value && player.role.team === "traveler") {
-        // reset to an unknown role
         this._store.commit("players/update", {
           player,
           property: "role",
           value: {}
         });
       } else {
-        // load role, first from session, the global, then fail gracefully
         const role =
           this._store.state.roles.get(value) ||
           this._store.getters.rolesJSONbyId.get(value) ||
@@ -499,38 +444,26 @@ class LiveSession {
         });
       }
     } else {
-      // just update the player otherwise
       this._store.commit("players/update", { player, property, value });
     }
   }
 
   /**
-   * Publish a player pronouns update
-   * @param player
-   * @param value
-   * @param isFromSockets
+   * Publish a pronouns update. Seated player or ST only.
    */
   sendPlayerPronouns({ player, value, isFromSockets }) {
-    //send pronoun only for the seated player or storyteller
-    //Do not re-send pronoun data for an update that was recieved from the sockets layer
     if (
       isFromSockets ||
-      (this._isSpectator && this._store.state.session.playerId !== player.id)
+      (this._isSpectator &&
+        this._store.state.session.playerId !== player.id)
     )
       return;
     const index = this._store.state.players.players.indexOf(player);
     this._send("pronouns", [index, value]);
   }
 
-  /**
-   * Update a pronouns based on incoming data.
-   * @param index
-   * @param value
-   * @private
-   */
   _updatePlayerPronouns([index, value]) {
     const player = this._store.state.players.players[index];
-
     this._store.commit("players/update", {
       player,
       property: "pronouns",
@@ -540,76 +473,23 @@ class LiveSession {
   }
 
   /**
-   * Handle a ping message by another player / storyteller
-   * @param playerIdOrCount
-   * @param latency
-   * @private
-   */
-  _handlePing([playerIdOrCount = 0, latency] = []) {
-    const now = new Date().getTime();
-    if (!this._isSpectator) {
-      // remove players that haven't sent a ping in twice the timespan
-      for (let player in this._players) {
-        if (now - this._players[player] > this._pingInterval * 2) {
-          delete this._players[player];
-          delete this._pings[player];
-        }
-      }
-      // remove claimed seats from players that are no longer connected
-      this._store.state.players.players.forEach(player => {
-        if (player.id && !this._players[player.id]) {
-          this._store.commit("players/update", {
-            player,
-            property: "id",
-            value: ""
-          });
-        }
-      });
-      // store new player data
-      if (playerIdOrCount) {
-        this._players[playerIdOrCount] = now;
-        const ping = parseInt(latency, 10);
-        if (ping && ping > 0 && ping < 30 * 1000) {
-          // ping to Players
-          this._pings[playerIdOrCount] = ping;
-          const pings = Object.values(this._pings);
-          this._store.commit(
-            "session/setPing",
-            Math.round(pings.reduce((a, b) => a + b, 0) / pings.length)
-          );
-        }
-      }
-    } else if (latency) {
-      // ping to ST
-      this._store.commit("session/setPing", parseInt(latency, 10));
-    }
-    // update player count
-    if (!this._isSpectator || playerIdOrCount) {
-      this._store.commit(
-        "session/setPlayerCount",
-        this._isSpectator ? playerIdOrCount : Object.keys(this._players).length
-      );
-    }
-  }
-
-  /**
-   * Handle a player leaving the sessions. ST only
-   * @param playerId
-   * @private
+   * Handle a player leaving: clear their claimed seat. ST only.
    */
   _handleBye(playerId) {
     if (this._isSpectator) return;
-    delete this._players[playerId];
-    this._store.commit(
-      "session/setPlayerCount",
-      Object.keys(this._players).length
-    );
+    this._store.state.players.players.forEach(player => {
+      if (player.id === playerId) {
+        this._store.commit("players/update", {
+          player,
+          property: "id",
+          value: ""
+        });
+      }
+    });
   }
 
   /**
-   * Claim a seat, needs to be confirmed by the Storyteller.
-   * Seats already occupied can't be claimed.
-   * @param seat either -1 to vacate or the index of the seat claimed
+   * Claim a seat in the session. Spectator only.
    */
   claimSeat(seat) {
     if (!this._isSpectator) return;
@@ -619,17 +499,10 @@ class LiveSession {
     }
   }
 
-  /**
-   * Update a player id associated with that seat.
-   * @param index seat index or -1
-   * @param value playerId to add / remove
-   * @private
-   */
   _updateSeat([index, value]) {
     if (this._isSpectator) return;
     const property = "id";
     const players = this._store.state.players.players;
-    // remove previous seat
     const oldIndex = players.findIndex(({ id }) => id === value);
     if (oldIndex >= 0 && oldIndex !== index) {
       this._store.commit("players/update", {
@@ -638,41 +511,31 @@ class LiveSession {
         value: ""
       });
     }
-    // add playerId to new seat
     if (index >= 0) {
       const player = players[index];
       if (!player) return;
       this._store.commit("players/update", { player, property, value });
     }
-    // update player session list as if this was a ping
-    this._handlePing([true, value, 0]);
   }
 
   /**
-   * Distribute player roles to all seated players in a direct message.
-   * This will be split server side so that each player only receives their own (sub)message.
+   * Send each seated player their own role directly. ST only.
    */
   distributeRoles() {
     if (this._isSpectator) return;
-    const message = {};
     this._store.state.players.players.forEach((player, index) => {
       if (player.id && player.role) {
-        message[player.id] = [
-          "player",
-          { index, property: "role", value: player.role.id }
-        ];
+        this._sendDirect(player.id, "player", {
+          index,
+          property: "role",
+          value: player.role.id
+        });
       }
     });
-    if (Object.keys(message).length) {
-      this._send("direct", message);
-    }
   }
 
   /**
-   * A player nomination. ST only
-   * This also syncs the voting speed to the players.
-   * Payload can be an object with {nomination} property or just the nomination itself, or undefined.
-   * @param payload [nominator, nominee]|{nomination}
+   * Broadcast a nomination. ST only.
    */
   nomination(payload) {
     if (this._isSpectator) return;
@@ -687,25 +550,19 @@ class LiveSession {
     }
   }
 
-  /**
-   * Set the isVoteInProgress status. ST only
-   */
   setVoteInProgress() {
     if (this._isSpectator) return;
-    this._send("isVoteInProgress", this._store.state.session.isVoteInProgress);
+    this._send(
+      "isVoteInProgress",
+      this._store.state.session.isVoteInProgress
+    );
   }
 
-  /**
-   * Send the isNight status. ST only
-   */
   setIsNight() {
     if (this._isSpectator) return;
     this._send("isNight", this._store.state.grimoire.isNight);
   }
 
-  /**
-   * Send the isVoteHistoryAllowed state. ST only
-   */
   setVoteHistoryAllowed() {
     if (this._isSpectator) return;
     this._send(
@@ -714,10 +571,6 @@ class LiveSession {
     );
   }
 
-  /**
-   * Send the voting speed. ST only
-   * @param votingSpeed voting speed in seconds, minimum 1
-   */
   setVotingSpeed(votingSpeed) {
     if (this._isSpectator) return;
     if (votingSpeed) {
@@ -725,27 +578,18 @@ class LiveSession {
     }
   }
 
-  /**
-   * Set which player is on the block. ST only
-   * @param playerIndex, player id or -1 for empty
-   */
   setMarked(playerIndex) {
     if (this._isSpectator) return;
     this._send("marked", playerIndex);
   }
 
-  /**
-   * Clear the vote history for everyone. ST only
-   */
   clearVoteHistory() {
     if (this._isSpectator) return;
     this._send("clearVoteHistory");
   }
 
   /**
-   * Send a vote. Player or ST
-   * @param index Seat of the player
-   * @param sync Flag whether to sync this vote with others or not
+   * Send a vote. Player or ST.
    */
   vote([index]) {
     const player = this._store.state.players.players[index];
@@ -753,7 +597,6 @@ class LiveSession {
       this._store.state.session.playerId === player.id ||
       !this._isSpectator
     ) {
-      // send vote only if it is your own vote or you are the storyteller
       this._send("vote", [
         index,
         this._store.state.session.votes[index],
@@ -762,12 +605,6 @@ class LiveSession {
     }
   }
 
-  /**
-   * Handle an incoming vote, but only if it is from ST or unlocked.
-   * @param index
-   * @param vote
-   * @param fromST
-   */
   _handleVote([index, vote, fromST]) {
     const { session, players } = this._store.state;
     const playerCount = players.players.length;
@@ -778,23 +615,17 @@ class LiveSession {
     }
   }
 
-  /**
-   * Lock a vote. ST only
-   */
   lockVote() {
     if (this._isSpectator) return;
     const { lockedVote, votes, nomination } = this._store.state.session;
     const { players } = this._store.state.players;
     const index = (nomination[1] + lockedVote - 1) % players.length;
-    this._send("lock", [this._store.state.session.lockedVote, votes[index]]);
+    this._send("lock", [
+      this._store.state.session.lockedVote,
+      votes[index]
+    ]);
   }
 
-  /**
-   * Update vote lock and the locked vote, if it differs. Player only
-   * @param lock
-   * @param vote
-   * @private
-   */
   _handleLock([lock, vote]) {
     if (!this._isSpectator) return;
     this._store.commit("session/lockVote", lock);
@@ -808,28 +639,16 @@ class LiveSession {
     }
   }
 
-  /**
-   * Swap two player seats. ST only
-   * @param payload
-   */
   swapPlayer(payload) {
     if (this._isSpectator) return;
     this._send("swap", payload);
   }
 
-  /**
-   * Move a player to another seat. ST only
-   * @param payload
-   */
   movePlayer(payload) {
     if (this._isSpectator) return;
     this._send("move", payload);
   }
 
-  /**
-   * Remove a player. ST only
-   * @param payload
-   */
   removePlayer(payload) {
     if (this._isSpectator) return;
     this._send("remove", payload);
@@ -837,10 +656,8 @@ class LiveSession {
 }
 
 export default store => {
-  // setup
   const session = new LiveSession(store);
 
-  // listen to mutations
   store.subscribe(({ type, payload }, state) => {
     switch (type) {
       case "session/setSessionId":
@@ -917,7 +734,7 @@ export default store => {
     }
   });
 
-  // check for session Id in hash
+  // Auto-join as spectator if session ID is in URL hash
   const sessionId = window.location.hash.substr(1);
   if (sessionId) {
     store.commit("session/setSpectator", true);
