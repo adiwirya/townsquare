@@ -576,6 +576,8 @@ class LiveSession {
    */
   distributeRoles() {
     if (this._isSpectator) return;
+    const bluffs = this._store.state.players.bluffs;
+    const bluffIds = bluffs.filter(b => b && b.id).map(b => b.id);
     this._store.state.players.players.forEach((player, index) => {
       if (player.id && player.role) {
         this._sendDirect(player.id, "player", {
@@ -583,6 +585,9 @@ class LiveSession {
           property: "role",
           value: player.role.id
         });
+        if (player.role.team === "demon" && bluffIds.length) {
+          this._sendDirect(player.id, "bluffs", bluffIds);
+        }
       }
     });
   }

@@ -195,15 +195,10 @@ export default {
         this.bluffSelected.forEach((role, index) => {
           this.$store.commit("players/setBluff", { index, role });
         });
-        // Auto-distribute in live session when bluffs are selected
-        if (this.session.sessionId && this.bluffSelected.length) {
+        // Auto-distribute in live session
+        if (this.session.sessionId) {
           this.$store.commit("session/distributeRoles", true);
           setTimeout(() => this.$store.commit("session/distributeRoles", false), 2000);
-          const demonPlayer = this.players.find(p => p.role && p.role.team === "demon");
-          if (demonPlayer && demonPlayer.id) {
-            this.$store.commit("session/setDistributeBluffsTarget", demonPlayer.id);
-            setTimeout(() => this.$store.commit("session/setDistributeBluffsTarget", null), 2000);
-          }
         }
         this.$store.commit("toggleModal", "roles");
       }
