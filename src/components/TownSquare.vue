@@ -25,7 +25,7 @@
 
     <div
       class="bluffs"
-      v-if="players.length"
+      v-if="players.length && (!session.isSpectator || bluffs.length)"
       ref="bluffs"
       :class="{ closed: !isBluffsOpen }"
     >
@@ -497,7 +497,7 @@ export default {
   }
 }
 
-#townsquare.public > .bluffs {
+#townsquare.public:not(.spectator) > .bluffs {
   opacity: 0;
   transform: scale(0.1);
 }
