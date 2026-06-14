@@ -295,9 +295,10 @@ ul.tokens {
       position: absolute;
       color: red;
       filter: drop-shadow(0 0 3px black) drop-shadow(0 0 3px black);
-      top: 5px;
-      right: -5px;
-      font-size: 150%;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 100%;
       display: none;
     }
     .buttons {
