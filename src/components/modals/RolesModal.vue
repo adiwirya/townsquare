@@ -28,6 +28,29 @@
         </div>
       </li>
     </ul>
+    <!-- Demon bluff selection -->
+    <div class="bluff-section" v-if="hasDemonSelected">
+      <div class="bluff-header">
+        Demon Bluffs
+        <span class="bluff-count" :class="{ full: bluffSelected.length === 3 }">{{ bluffSelected.length }}/3</span>
+        <small> — roles not in play</small>
+      </div>
+      <div class="bluff-scroll">
+        <template v-for="(roles) in bluffableRoles">
+          <div
+            v-for="role in roles"
+            :key="'b-'+role.id"
+            class="bluff-chip"
+            :class="[role.team, { active: isBluffSelected(role.id), faded: bluffSelected.length >= 3 && !isBluffSelected(role.id) }]"
+          >
+            <Token :role="role" />
+            <div class="bluff-cap" @click.stop="toggleBluff(role)"></div>
+          </div>
+        </template>
+        <span v-if="!hasBluffableRoles" class="bluff-empty">No roles available</span>
+      </div>
+    </div>
+
     <div class="warning" v-if="hasSelectedSetupRoles">
       <font-awesome-icon icon="exclamation-triangle" />
       <span>
@@ -86,7 +109,8 @@ export default {
     return {
       roleSelection: {},
       game: gameJSON,
-      allowMultiple: false
+      allowMultiple: false,
+      bluffSelected: []
     };
   },
   computed: {
@@ -100,12 +124,30 @@ export default {
         roles.some(role => role.selected && role.setup)
       );
     },
-    ...mapState(["roles", "modals"]),
+    hasDemonSelected() {
+      return !!(this.roleSelection.demon &&
+        this.roleSelection.demon.some(r => r.selected > 0));
+    },
+    bluffableRoles() {
+      const result = {};
+      const bluffTeams = ["townsfolk", "outsider", "minion"];
+      bluffTeams.forEach(team => {
+        if (!this.roleSelection[team]) return;
+        const unselected = this.roleSelection[team].filter(r => !r.selected);
+        if (unselected.length) result[team] = unselected;
+      });
+      return result;
+    },
+    hasBluffableRoles() {
+      return Object.values(this.bluffableRoles).some(r => r.length > 0);
+    },
+    ...mapState(["roles", "modals", "session"]),
     ...mapState("players", ["players"]),
     ...mapGetters({ nonTravelers: "players/nonTravelers" })
   },
   methods: {
     selectRandomRoles() {
+      this.bluffSelected = [];
       this.roleSelection = {};
       this.roles.forEach(role => {
         if (!this.roleSelection[role.team]) {
@@ -136,10 +178,8 @@ export default {
         const roles = Object.values(this.roleSelection)
           .map(roles =>
             roles
-              // duplicate roles selected more than once and filter unselected
               .reduce((a, r) => [...a, ...Array(r.selected).fill(r)], [])
           )
-          // flatten into a single array
           .reduce((a, b) => [...a, ...b], [])
           .map(a => [Math.random(), a])
           .sort((a, b) => a[0] - b[0])
@@ -147,14 +187,36 @@ export default {
         this.players.forEach(player => {
           if (player.role.team !== "traveler" && roles.length) {
             const value = roles.pop();
-            this.$store.commit("players/update", {
-              player,
-              property: "role",
-              value
-            });
+            this.$store.commit("players/update", { player, property: "role", value });
           }
         });
+        // Set bluffs
+        this.$store.commit("players/setBluff");
+        this.bluffSelected.forEach((role, index) => {
+          this.$store.commit("players/setBluff", { index, role });
+        });
+        // Auto-distribute in live session when bluffs are selected
+        if (this.session.sessionId && this.bluffSelected.length) {
+          this.$store.commit("session/distributeRoles", true);
+          setTimeout(() => this.$store.commit("session/distributeRoles", false), 2000);
+          const demonPlayer = this.players.find(p => p.role && p.role.team === "demon");
+          if (demonPlayer && demonPlayer.id) {
+            this.$store.commit("session/setDistributeBluffsTarget", demonPlayer.id);
+            setTimeout(() => this.$store.commit("session/setDistributeBluffsTarget", null), 2000);
+          }
+        }
         this.$store.commit("toggleModal", "roles");
+      }
+    },
+    isBluffSelected(roleId) {
+      return this.bluffSelected.some(r => r.id === roleId);
+    },
+    toggleBluff(role) {
+      const idx = this.bluffSelected.findIndex(r => r.id === role.id);
+      if (idx >= 0) {
+        this.bluffSelected.splice(idx, 1);
+      } else if (this.bluffSelected.length < 3) {
+        this.bluffSelected.push(role);
       }
     },
     startGacha() {
@@ -295,6 +357,77 @@ ul.tokens {
   border-color: #9b30d9;
   &:hover:not(.disabled) {
     background: linear-gradient(135deg, #5a0099, #8b00cc);
+  }
+}
+
+.bluff-section {
+  margin: 6px 5% 4px;
+  padding: 6px 8px;
+  border: 1px solid rgba(200, 80, 80, 0.35);
+  border-radius: 10px;
+  background: rgba(100, 0, 0, 0.12);
+
+  .bluff-header {
+    font-size: 0.72rem;
+    color: rgba(255, 150, 150, 0.9);
+    text-align: center;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+    small { color: rgba(255, 255, 255, 0.4); }
+  }
+
+  .bluff-count {
+    font-weight: bold;
+    margin: 0 3px;
+    &.full { color: #ff4444; }
+  }
+
+  .bluff-scroll {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 5px;
+    max-height: 110px;
+    overflow-y: auto;
+    padding: 2px;
+  }
+
+  .bluff-chip {
+    width: 4vw;
+    min-width: 40px;
+    max-width: 52px;
+    border-radius: 50%;
+    opacity: 0.45;
+    transition: opacity 200ms, transform 200ms, box-shadow 200ms;
+    cursor: pointer;
+
+    &:hover:not(.faded) {
+      opacity: 0.85;
+      transform: scale(1.1);
+      z-index: 10;
+    }
+    &.active {
+      opacity: 1;
+      box-shadow: 0 0 10px 3px rgba(255, 80, 80, 0.65);
+    }
+    &.faded {
+      opacity: 0.15;
+    }
+  }
+
+  .bluff-cap {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .bluff-empty {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.4);
+    text-align: center;
+    padding: 4px;
   }
 }
 

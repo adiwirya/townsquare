@@ -267,6 +267,9 @@ class LiveSession {
       case "requestGacha":
         this._handleGachaRequest(payload);
         break;
+      case "bluffs":
+        this._handleBluffsReceive(payload);
+        break;
     }
   }
 
@@ -584,6 +587,27 @@ class LiveSession {
     });
   }
 
+  distributeBluffsToDemon(demonPlayerId) {
+    if (this._isSpectator || !demonPlayerId) return;
+    const bluffs = this._store.state.players.bluffs;
+    const bluffIds = bluffs.filter(b => b && b.id).map(b => b.id);
+    if (!bluffIds.length) return;
+    this._sendDirect(demonPlayerId, "bluffs", bluffIds);
+  }
+
+  _handleBluffsReceive(bluffIds) {
+    if (!this._isSpectator) return;
+    this._store.commit("players/setBluff");
+    bluffIds.forEach((roleId, index) => {
+      const role =
+        this._store.state.roles.get(roleId) ||
+        this._store.getters.rolesJSONbyId.get(roleId);
+      if (role) {
+        this._store.commit("players/setBluff", { index, role });
+      }
+    });
+  }
+
   broadcastGachaStart() {
     if (this._isSpectator) return;
     this._send("gachaStart");
@@ -777,6 +801,11 @@ export default store => {
       case "session/distributeRoles":
         if (payload) {
           session.distributeRoles();
+        }
+        break;
+      case "session/setDistributeBluffsTarget":
+        if (payload) {
+          session.distributeBluffsToDemon(payload);
         }
         break;
       case "session/startGachaSession":
