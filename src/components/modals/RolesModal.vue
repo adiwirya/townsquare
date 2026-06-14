@@ -454,28 +454,23 @@ ul.tokens {
 
   .warning {
     color: red;
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    padding: 4px 10px;
+    margin: 4px 5%;
+    background: rgba(120, 0, 0, 0.15);
+    border-radius: 8px;
+    border: 1px solid rgba(200, 0, 0, 0.3);
     svg {
-      font-size: 150%;
-      vertical-align: middle;
+      font-size: 120%;
+      flex-shrink: 0;
     }
     span {
-      display: none;
-      text-align: center;
-      position: absolute;
-      right: -20px;
-      bottom: 30px;
-      width: 420px;
-      background: rgba(0, 0, 0, 0.75);
-      padding: 5px;
-      border-radius: 10px;
-      border: 2px solid black;
-    }
-    &:hover span {
       display: block;
+      text-align: left;
     }
   }
 }
