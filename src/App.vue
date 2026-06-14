@@ -43,6 +43,13 @@
       :player="gachaDrawPlayer"
       @close="$store.commit('session/setGachaDrawPlayerId', null)"
     />
+    <GachaModal
+      v-else-if="bluffsRevealPlayer"
+      :show="true"
+      :player="bluffsRevealPlayer"
+      :auto-reveal="true"
+      @close="$store.commit('session/setBluffsRevealPlayerId', null)"
+    />
     <span id="version">v{{ version }}</span>
   </div>
 </template>
@@ -89,6 +96,11 @@ export default {
     ...mapState("players", ["players"]),
     gachaDrawPlayer() {
       const id = this.session.gachaDrawPlayerId;
+      if (!id) return null;
+      return this.players.find(p => p.id === id) || null;
+    },
+    bluffsRevealPlayer() {
+      const id = this.session.bluffsRevealPlayerId;
       if (!id) return null;
       return this.players.find(p => p.id === id) || null;
     }

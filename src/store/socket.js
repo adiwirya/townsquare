@@ -611,6 +611,13 @@ class LiveSession {
         this._store.commit("players/setBluff", { index, role });
       }
     });
+    // Trigger bluffs reveal modal (only when not already inside gacha draw modal)
+    if (!this._store.state.session.gachaDrawPlayerId) {
+      this._store.commit(
+        "session/setBluffsRevealPlayerId",
+        this._store.state.session.playerId
+      );
+    }
   }
 
   broadcastGachaStart() {
@@ -638,6 +645,11 @@ class LiveSession {
       {};
     this._store.commit("players/update", { player: players[index], property: "role", value: role });
     this._sendDirect(playerId, "gachaRole", { index, roleId });
+    if (role.team === "demon") {
+      const bluffs = this._store.state.players.bluffs;
+      const bluffIds = bluffs.filter(b => b && b.id).map(b => b.id);
+      if (bluffIds.length) this._sendDirect(playerId, "bluffs", bluffIds);
+    }
     if (this._store.state.session.gachaPool.length === 0) {
       this._store.commit("session/setGachaMode", false);
       this._send("gachaEnd");

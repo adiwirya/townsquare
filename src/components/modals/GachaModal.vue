@@ -62,6 +62,23 @@
               </div>
             </div>
 
+            <!-- Demon bluffs -->
+            <div v-if="player.role.team === 'demon' && bluffs.length" class="demon-bluffs-reveal">
+              <p class="bluffs-label">Your bluffs:</p>
+              <div class="bluffs-row">
+                <div
+                  v-for="(bluff, i) in bluffs"
+                  :key="i"
+                  class="bluff-item"
+                >
+                  <div class="bluff-icon-wrap">
+                    <div class="bluff-icon" :style="bluffIconStyle(bluff)"></div>
+                  </div>
+                  <span class="bluff-name">{{ bluff.name }}</span>
+                </div>
+              </div>
+            </div>
+
             <button class="close-btn" @click="$emit('close')">Close</button>
           </div>
         </transition>
@@ -78,13 +95,15 @@ export default {
   name: "GachaModal",
   props: {
     show: { type: Boolean, default: false },
-    player: { type: Object, required: true }
+    player: { type: Object, required: true },
+    autoReveal: { type: Boolean, default: false }
   },
   data() {
-    return { phase: "idle" };
+    return { phase: this.autoReveal ? "revealed" : "idle" };
   },
   computed: {
     ...mapState(["grimoire"]),
+    ...mapState("players", ["bluffs"]),
     roleIconStyle() {
       const role = this.player.role;
       if (!role || !role.id) return {};
@@ -103,7 +122,7 @@ export default {
   },
   watch: {
     show(val) {
-      if (val) this.phase = "idle";
+      if (val) this.phase = this.autoReveal ? "revealed" : "idle";
     },
     player: {
       deep: true,
@@ -122,6 +141,20 @@ export default {
     },
     onBackdropClick() {
       if (this.phase !== "drawing") this.$emit("close");
+    },
+    bluffIconStyle(bluff) {
+      if (!bluff || !bluff.id) return {};
+      let url = "";
+      if (bluff.image && this.grimoire.isImageOptIn) {
+        url = bluff.image;
+      } else {
+        try {
+          url = require(`../../assets/icons/${bluff.imageAlt || bluff.id}.png`);
+        } catch (e) {
+          url = "";
+        }
+      }
+      return url ? { backgroundImage: `url(${url})` } : {};
     }
   }
 };
@@ -371,6 +404,61 @@ export default {
     line-height: 1.5;
     margin: 0;
     font-style: italic;
+  }
+}
+
+/* Demon bluffs section */
+.demon-bluffs-reveal {
+  margin: 0 0 18px;
+  text-align: center;
+
+  .bluffs-label {
+    font-size: 0.78rem;
+    color: rgba(255, 160, 160, 0.85);
+    letter-spacing: 1px;
+    margin: 0 0 10px;
+    text-transform: uppercase;
+  }
+
+  .bluffs-row {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+  }
+
+  .bluff-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .bluff-icon-wrap {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: url("../../assets/token.png") center/100%;
+    border: 2px solid rgba(255, 100, 100, 0.35);
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .bluff-icon {
+    position: absolute;
+    inset: 0;
+    background-size: 100%;
+    background-repeat: no-repeat;
+    background-position: center 30%;
+    margin-top: 3%;
+  }
+
+  .bluff-name {
+    font-size: 0.65rem;
+    color: rgba(220, 200, 255, 0.8);
+    text-align: center;
+    max-width: 64px;
+    line-height: 1.2;
   }
 }
 

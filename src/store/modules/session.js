@@ -34,7 +34,8 @@ const state = () => ({
   gachaPool: [],
   gachaRequestCount: 0,
   gachaDrawPlayerId: null,
-  distributeBluffsTarget: null
+  distributeBluffsTarget: null,
+  bluffsRevealPlayerId: null
 });
 
 const getters = {};
@@ -62,6 +63,7 @@ const mutations = {
   setGachaMode: set("isGachaMode"),
   setGachaDrawPlayerId: set("gachaDrawPlayerId"),
   setDistributeBluffsTarget: set("distributeBluffsTarget"),
+  setBluffsRevealPlayerId: set("bluffsRevealPlayerId"),
   startGachaSession(state, pool) {
     state.gachaPool = [...pool];
     state.isGachaMode = true;
